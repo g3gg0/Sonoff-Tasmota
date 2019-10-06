@@ -299,6 +299,7 @@
 #define D_MQTT_ENABLE "MQTT ingeschakeld"
 #define D_FRIENDLY_NAME "Beschrijvende naam"
 #define D_BELKIN_WEMO "Belkin WeMo"
+#define D_LINK2HOME "Link2Home"
 #define D_HUE_BRIDGE "Hue Bridge"
 #define D_SINGLE_DEVICE "een apparaat"
 #define D_MULTI_DEVICE "meer apparaten"

@@ -299,6 +299,7 @@
 #define D_MQTT_ENABLE "Активиране на MQTT"
 #define D_FRIENDLY_NAME "Приятелско име"
 #define D_BELKIN_WEMO "Belkin WeMo"
+#define D_LINK2HOME "Link2Home"
 #define D_HUE_BRIDGE "Hue Bridge"
 #define D_SINGLE_DEVICE "Единично"
 #define D_MULTI_DEVICE "Мулти"

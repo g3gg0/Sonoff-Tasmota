@@ -530,7 +530,7 @@ const char kContentTypes[] PROGMEM = "text/html|text/plain|text/xml|application/
 const char kLoggingOptions[] PROGMEM = D_SERIAL_LOG_LEVEL "|" D_WEB_LOG_LEVEL "|" D_MQTT_LOG_LEVEL "|" D_SYS_LOG_LEVEL;
 const char kLoggingLevels[] PROGMEM = D_NONE "|" D_ERROR "|" D_INFO "|" D_DEBUG "|" D_MORE_DEBUG;
 
-const char kEmulationOptions[] PROGMEM = D_NONE "|" D_BELKIN_WEMO "|" D_HUE_BRIDGE;
+const char kEmulationOptions[] PROGMEM = D_NONE "|" D_BELKIN_WEMO "|" D_HUE_BRIDGE "|" D_LINK2HOME;
 
 const char kUploadErrors[] PROGMEM =
   D_UPLOAD_ERR_1 "|" D_UPLOAD_ERR_2 "|" D_UPLOAD_ERR_3 "|" D_UPLOAD_ERR_4 "|" D_UPLOAD_ERR_5 "|" D_UPLOAD_ERR_6 "|" D_UPLOAD_ERR_7 "|" D_UPLOAD_ERR_8 "|" D_UPLOAD_ERR_9
@@ -1709,6 +1709,9 @@ void HandleOtherConfiguration(void)
 #ifndef USE_EMULATION_HUE
     if (i == EMUL_HUE) { i++; }
 #endif
+#ifndef USE_EMULATION_L2H
+    if (i == EMUL_L2H) { i++; }
+#endif
     if (i < EMUL_MAX) {
       WSContentSend_P(PSTR("<input id='r%d' name='b2' type='radio' value='%d'%s><b>%s</b> %s<br>"),  // Different id only used for labels
         i, i,
@@ -2735,16 +2738,18 @@ void (* const WebCommand[])(void) PROGMEM = {
 #ifdef USE_EMULATION
 void CmndEmulation(void)
 {
-#if defined(USE_EMULATION_WEMO) && defined(USE_EMULATION_HUE)
-  if ((XdrvMailbox.payload >= EMUL_NONE) && (XdrvMailbox.payload < EMUL_MAX)) {
-#else
-#ifndef USE_EMULATION_WEMO
-  if ((EMUL_NONE == XdrvMailbox.payload) || (EMUL_HUE == XdrvMailbox.payload)) {
+  if (
+#if defined(USE_EMULATION_HUE) 
+      (EMUL_HUE == XdrvMailbox.payload) ||
 #endif
-#ifndef USE_EMULATION_HUE
-  if ((EMUL_NONE == XdrvMailbox.payload) || (EMUL_WEMO == XdrvMailbox.payload)) {
+#if defined(USE_EMULATION_WEMO) 
+      (EMUL_WEMO == XdrvMailbox.payload) ||
 #endif
+#if defined(USE_EMULATION_L2H) 
+      (EMUL_L2H == XdrvMailbox.payload) ||
 #endif
+      (EMUL_NONE == XdrvMailbox.payload))
+  {
     Settings.flag2.emulation = XdrvMailbox.payload;
     restart_flag = 2;
   }

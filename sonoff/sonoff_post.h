@@ -58,6 +58,9 @@ char* ToHex_P(const unsigned char * in, size_t insz, char * out, size_t outsz, c
 #ifdef USE_EMULATION_WEMO
 #define USE_EMULATION
 #endif
+#ifdef USE_EMULATION_L2H
+#define USE_EMULATION
+#endif
 
 #ifdef USE_MQTT_TLS
   const uint16_t WEB_LOG_SIZE = 2000;       // Max number of characters in weblog

@@ -299,6 +299,7 @@
 #define D_MQTT_ENABLE "啟用MQTT"
 #define D_FRIENDLY_NAME "昵稱"
 #define D_BELKIN_WEMO "貝爾金 WeMo"
+#define D_LINK2HOME "Link2Home"
 #define D_HUE_BRIDGE "飛利浦 Hue 網橋"
 #define D_SINGLE_DEVICE "單設備"
 #define D_MULTI_DEVICE "多設備"
