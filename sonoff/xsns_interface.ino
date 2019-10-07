@@ -831,7 +831,7 @@ const uint8_t kXsnsList[] = {
 
 /*********************************************************************************************/
 
-bool XsnsEnabled(uint32_t sns_index)
+bool XsnsEnabled(uint8_t sns_index)
 {
   if (sns_index < sizeof(kXsnsList)) {
 #ifdef XFUNC_PTR_IN_ROM
