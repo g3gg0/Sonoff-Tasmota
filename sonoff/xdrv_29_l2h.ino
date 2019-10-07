@@ -7,7 +7,7 @@
 using namespace std;
 
 //#define LOG(lvl, ...) Serial.printf(__VA_ARGS__)
-#define LOG(lvl, ...) AddLog_P2(lvl, "L2H:" __VA_ARGS__)
+#define LOG(lvl, ...) AddLog_P2(lvl, "L2H: " __VA_ARGS__)
 
 
 extern "C"
