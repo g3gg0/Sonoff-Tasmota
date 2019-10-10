@@ -1,36 +1,67 @@
-
-#include <stdint.h>
 /*
+  l2h.inc - Link2Home emulator - C implementation
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+  Copyright (C) 2019  Georg Hofstetter
 
-#ifdef PC
-#include <sys/time.h>
-#include <sys/types.h>
-#endif
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-#include "l2h.h"
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+  DISCLAIMER:
+ -------------
+  This protocol was reverse engineered by just analyzing the communication
+  between the server and the smart wall plug.
+  As the device did not verify the certificate, it was an easy to set up a
+  MITM scenario which did not require to crack anything open.
+  So nothing shady happened during the reverse engineering process.
+
+  Using their services should also be legal as we do not fake anything and 
+  are always honest when reporting our MAC address.
+  So there is no fraud happening and no security mechanisms are overridden.
+  They could easily lock out non-Link2Home devices by blocking foreign MACs.
+
+  As soon this happens, users would have to deliberately fake MAC addresses
+  which could be interpreted as an attack against their system.
+
+  IMPORTANT:
+ -------------
+  In any case, please do not use this code or this knowledge derieved from
+  it to attack the servers or devices of other Link2Home users.
+  It is clear that there is no real security at all.
+
+  Their service, open like a public park. So behave and be kind to others.
 
 */
+#include <stdint.h>
+
 
 uint8_t l2h_verbose = 0;
 uint8_t l2h_mac[6];
 uint8_t l2h_companyCode = 0x02;
-uint8_t l2h_deviceType = L2H_DEVICE_SWITCH;
+uint8_t l2h_deviceType = L2H_DEVICE_GARDENLAMP;
 uint16_t l2h_authCode = 29008;
 uint16_t l2h_sequence = 0;
+uint32_t l2h_expected_mode = 0;
 
-//uint8_t l2h_switch_status = 0;
+void l2h_send_status(l2h_net_t *net);
+void l2h_send_idle(l2h_net_t *net);
+void l2h_send_login(l2h_net_t *net);
 
 /* ******************************************************* */
 /*           PA - platform adaption area                   */
 /* ******************************************************* */
 
-#define l2h_pa_printf(...)
-//#define l2h_pa_printf Serial.printf
+//#define l2h_pa_printf(...)
+#define l2h_pa_printf Serial.printf
 
 uint32_t pa_time()
 {
@@ -66,28 +97,6 @@ uint32_t pa_bcast_write(l2h_net_t *net, uint8_t *buf, uint32_t length)
 {
     return L2H_bcast_write(buf, length);
 }
-/*
-uint16_t htons(uint16_t val)
-{
-  return (val >> 8) | (val << 8);
-}
-
-uint16_t ntohs(uint16_t val)
-{
-  return htons(val);
-}
-
-uint32_t htonl(uint32_t val)
-{
-  return ((uint32_t)htons(val) >> 16) | ((uint32_t)htons(val) << 16);
-}
-
-uint32_t ntohl(uint32_t val)
-{
-  return htonl(val);
-}
-
-*/
 
 /* ******************************************************* */
 /*         L2H - probably needs modification               */
@@ -359,6 +368,7 @@ void l2h_handle(l2h_net_t *net, l2h_hdr_t *pkt)
             pa_cmd_callout(cmd_id, cmd_data, 2);
 
             uint8_t data[2] = {0x01, 0xFF};
+            data[0] = l2h_expected_mode;
             data[1] = power ? 0xFF : 0x00;
 
             l2h_send_response(net, pkt, data, 2);
@@ -399,15 +409,21 @@ void l2h_handle(l2h_net_t *net, l2h_hdr_t *pkt)
 
         case L2H_CMD_COUNTDOWN:
         {
+            static int length = 0;
             pa_cmd_callout(cmd_id, cmd_data, 8);
             l2h_dump_pkt(pkt, "Countdown packet");
-            l2h_send_response(net, pkt, (uint8_t *)"\x80\xFF", 2); /* not sure about the reply */
+            l2h_send_response(net, pkt, (uint8_t *)"\xFF", 1); /* not sure about the reply */
             break;
         }
 
         case L2H_CMD_STATUS_05:
         {
+            l2h_pa_printf(" -> L2H_CMD_STATUS_05 set 0x%02X\n", cmd_data[1]);
+
+            pa_cmd_callout(cmd_id, cmd_data, 3);
+
             uint8_t data[2] = {0x01, 0xFF};
+            data[0] = l2h_expected_mode;
             data[1] = power ? 0xFF : 0x00;
 
             l2h_send_response(net, pkt, data, 2);
@@ -501,6 +517,8 @@ void l2h_handle(l2h_net_t *net, l2h_hdr_t *pkt)
 
         case L2H_CMD_LAMPMODE:
         {
+            l2h_expected_mode = *cmd_data;
+
             pa_cmd_callout(cmd_id, cmd_data, 1);
             l2h_send_response(net, pkt, cmd_data, 1);
             break;
@@ -587,6 +605,13 @@ void l2h_handle(l2h_net_t *net, l2h_hdr_t *pkt)
         }
         case L2H_CMD_UNK_5B:
         {
+            l2h_dump_pkt(pkt, "L2H_CMD_UNK_5B");
+            l2h_send_response(net, pkt, cmd_data, 1);
+            break;
+        }
+        case L2H_CMD_UNK_56:
+        {
+            l2h_dump_pkt(pkt, "L2H_CMD_UNK_56");
             l2h_send_response(net, pkt, cmd_data, 1);
             break;
         }
@@ -597,14 +622,35 @@ void l2h_handle(l2h_net_t *net, l2h_hdr_t *pkt)
     }
 }
 
-void l2h_send_idle(l2h_net_t *net)
+void l2h_send_status(l2h_net_t *net)
 {
     uint8_t data[2] = { 0x01, 0xFF };
 
+    if(!power)
+    {
+        l2h_expected_mode = L2H_MODE_OFF;
+    }
+    else if(l2h_expected_mode == L2H_MODE_OFF)
+    {
+        l2h_expected_mode = L2H_MODE_ON;
+    }
+
+    if(l2h_deviceType != L2H_DEVICE_GARDENLAMP)
+    {
+        l2h_expected_mode = L2H_MODE_ON;
+    }
+
+    data[0] = l2h_expected_mode;
     data[1] = power ? 0xFF : 0x00;
 
     net->type = L2H_NET_SSL;
+    l2h_send_request(net, L2H_CMD_STATUS_05, data, 2);
     l2h_send_request(net, L2H_CMD_SWITCH_REPORT, data, 2);
+}
+
+void l2h_send_idle(l2h_net_t *net)
+{
+    l2h_send_status(net);
     l2h_send_request(net, L2H_CMD_IDLE, (uint8_t *)"", 0);
 }
 

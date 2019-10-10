@@ -1,4 +1,21 @@
+/*
+  xdrv_29_l2h.ino - Link2Home emulator - Arduino upper layer
 
+  Copyright (C) 2019  Georg Hofstetter
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 #ifdef USE_EMULATION_L2H
 
 #define XDRV_29 29
@@ -6,7 +23,6 @@
 #include <stdint.h>
 using namespace std;
 
-//#define LOG(lvl, ...) Serial.printf(__VA_ARGS__)
 #define LOG(lvl, ...) AddLog_P2(lvl, "L2H: " __VA_ARGS__)
 
 
@@ -35,6 +51,19 @@ WiFiClientSecure l2h_client;
 WiFiUDP l2h_udp;
 int l2h_lastConnect = 0;
 int l2h_lastPkt = 0;
+int l2h_lastPktReceived = 0;
+
+bool L2H_countdownEnabled = false;
+int L2H_countdownHours = 0;
+int L2H_countdownMinutes = 0;
+int L2H_countdownSeconds = 0;
+
+void L2H_disconnect()
+{
+  l2h_client.stop();
+  l2h_udp.stop();
+  l2h_connected = false;
+}
 
 void L2H_connect()
 {
@@ -60,9 +89,9 @@ void L2H_connect()
   int8_t ret = 0;
 
   l2h_client.setInsecure();
-  /* no memory on this device. packets will be small, so save mem here */
+  /* not a lot memory on this device. packets will be small, so save mem herewith */
   l2h_client.setBufferSizes(512, 512);
-  /* normally the devices connect to a load balancer which tells us to connect to this one. shortcut. directly connect. */
+  /* normally the devices connect to a load balancer which tells us to connect to this one. shortcut here directly connect. */
   l2h_client.connect("18.196.23.12", 33473);
 
   if (!l2h_client.connected())
@@ -113,6 +142,7 @@ void L2H_loop()
       l2h_handle(net, pkt);
       l2h_packet_free(pkt);
       l2h_lastPkt = curTime;
+      l2h_lastPktReceived = curTime;
     }
   }
 
@@ -121,6 +151,12 @@ void L2H_loop()
     l2h_lastPkt = curTime;
 
     l2h_send_idle(net);
+  }
+
+  if (curTime - l2h_lastPktReceived > 30000)
+  {
+    LOG(LOG_LEVEL_ERROR, "Timeout, nothing received for 30 seconds.");
+    L2H_disconnect();
   }
 }
 
@@ -144,7 +180,7 @@ extern "C"
         {
           const char *modes[] = {"Sensor", "On", "Off", "Timed", "Random"};
           LOG(LOG_LEVEL_DEBUG, "Mode: %s", modes[*buf]);
-          ExecuteCommandPower(0, (*buf =! 2), SRC_L2H);
+          ExecuteCommandPower(0, (*buf == L2H_MODE_ON), SRC_L2H);
         }
         break;
 
@@ -153,11 +189,27 @@ extern "C"
         break;
 
       case L2H_CMD_LUMDUR:
-        LOG(LOG_LEVEL_DEBUG, "Lumen duration: %2.1f h", *buf * 0.5);
+        LOG(LOG_LEVEL_DEBUG, "Auto duration: %2.1f h", *buf * 0.5f);
         break;
 
       case L2H_CMD_COUNTDOWN:
-        LOG(LOG_LEVEL_DEBUG, "Countdown till: %02d:%02d:%02d (0x%02X)", buf[5], buf[6] , buf[7], buf[4]);
+
+        if(RtcTime.valid)
+        {
+          /* what about time zones? */
+          ExecuteCommandPower(0, 1, SRC_L2H);
+          L2H_countdownHours = buf[5];
+          L2H_countdownMinutes = buf[6];
+          L2H_countdownSeconds = buf[7];
+          L2H_countdownEnabled = true;
+
+          LOG(LOG_LEVEL_DEBUG, "Countdown till: %02d:%02d:%02d (now is %02d:%02d:%02d)", L2H_countdownHours, L2H_countdownMinutes, L2H_countdownSeconds, RtcTime.hour, RtcTime.minute, RtcTime.second);
+        }
+        else
+        {
+          LOG(LOG_LEVEL_ERROR, "No RTC time available, not setting countdown");
+        }
+        
         break;
 
       case L2H_CMD_SCHED:
@@ -197,16 +249,28 @@ extern "C"
         break;
 
       case L2H_CMD_COLRGB:
+      {
+        char command[32];
         LOG(LOG_LEVEL_DEBUG, "Color: %d, %d, %d", buf[0], buf[1], buf[2]);
+        snprintf_P(command, sizeof(command), PSTR(D_CMND_COLOR " %02X%02x%02x"), buf[0], buf[1], buf[2]);
+        ExecuteCommand(command, SRC_L2H);
         break;
+      }
 
       case L2H_CMD_COLWHITE:
         LOG(LOG_LEVEL_DEBUG, "White: %d", buf[0]);
         break;
 
       case L2H_CMD_MAXBR:
-        LOG(LOG_LEVEL_DEBUG, "Brightness: %d", *buf);
+      {
+        char command[32];
+        uint32_t brightness = (*buf * 100) / 202;
+        LOG(LOG_LEVEL_DEBUG, "Brightness: raw %d -> %d scaled", *buf, brightness);
+        
+        snprintf_P(command, sizeof(command), PSTR(D_CMND_DIMMER " %d"), brightness);
+        ExecuteCommand(command, SRC_L2H);
         break;
+      }
 
       case L2H_CMD_LUMEN:
         LOG(LOG_LEVEL_DEBUG, "Lumen: %d", *buf);
@@ -275,6 +339,21 @@ extern "C"
   }
 }
 
+void L2H_checkCountdown()
+{
+  if (RtcTime.valid && L2H_countdownEnabled)
+  {
+    if (L2H_countdownHours == RtcTime.hour && 
+        L2H_countdownMinutes == RtcTime.minute &&
+        L2H_countdownSeconds == RtcTime.second)
+    {
+      LOG(LOG_LEVEL_DEBUG, "Countdown time reached, switch off.");
+      ExecuteCommandPower(0, 0, SRC_L2H);
+      L2H_countdownEnabled = false;
+    }
+  }
+}
+
 bool Xdrv29(uint8_t function)
 {
   bool result = false;
@@ -284,10 +363,10 @@ bool Xdrv29(uint8_t function)
     {
       case FUNC_EVERY_100_MSECOND:
         L2H_loop();
+        L2H_checkCountdown();
         break;
       case FUNC_SET_DEVICE_POWER:
-        l2h_lastPkt = 0;
-        L2H_loop();
+        l2h_send_idle(net);
         break;
     }
   }

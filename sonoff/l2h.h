@@ -30,6 +30,12 @@
 /* constants */
 #define L2H_MAX_PKT_LEN 1024
 
+#define L2H_MODE_SESNOR   0
+#define L2H_MODE_ON       1
+#define L2H_MODE_OFF      2
+#define L2H_MODE_TIMED    3
+#define L2H_MODE_RANDOM   4
+
 /* command IDs */
 #define L2H_CMD_SWITCH         0x01
 #define L2H_CMD_UNK_02         0x02
@@ -57,6 +63,7 @@
 #define L2H_CMD_SENSLVL        0x51 /* 1 byte data */
 #define L2H_CMD_LUX            0x52 /* 2 byte data */
 #define L2H_CMD_ONDUR          0x53 /* 2 byte data */
+#define L2H_CMD_UNK_56         0x56
 #define L2H_CMD_SENSMODE       0x58
 #define L2H_CMD_TEST           0x59
 #define L2H_CMD_UNK_5B         0x5B /* 1 byte data */
